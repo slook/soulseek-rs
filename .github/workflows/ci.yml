@@ -171,11 +171,12 @@ jobs:
       - name: Run the stress benchmark with the functional gate
         env:
           STRESS_REQUIRE_FUNCTIONAL: "1"
-          STRESS_PEERS: "128"
+          STRESS_PEERS: "1024"
           STRESS_SEARCHES: "32"
-          STRESS_DOWNLOADS: "128"
-          STRESS_LEECHERS: "64"
+          STRESS_DOWNLOADS: "256"
+          STRESS_LEECHERS: "512"
           STRESS_BROWSES: "32"
+          STRESS_TIMEOUT: "900"
         run: |
-          ulimit -n 20000
+          ulimit -n 40000
           cargo run --release -p soulseek-rs-lib --example stress

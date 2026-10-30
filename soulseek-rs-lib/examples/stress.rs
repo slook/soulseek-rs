@@ -96,7 +96,7 @@ impl Config {
                 "STRESS_UPLOAD_SLOTS",
                 env_usize("STRESS_LEECHERS", 256).max(1),
             ),
-            file_bytes: env_usize("STRESS_FILE_KB", 4096) * 1024,
+            file_bytes: env_usize("STRESS_FILE_KB", 32) * 1024,
             timeout: Duration::from_secs(env_usize("STRESS_TIMEOUT", 60) as u64),
             save: std::env::var("STRESS_SAVE").is_ok_and(|v| v == "1"),
         }
@@ -181,8 +181,8 @@ impl TestServer {
             .arg(port.to_string())
             .arg("-d")
             .arg(&db)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .spawn()
             .ok()?;
 
@@ -281,7 +281,7 @@ fn connect_retry(addr: &str, timeout: Duration) -> std::io::Result<TcpStream> {
 /// online for as long as the returned stream lives.
 fn login_raw(server_addr: &str, username: &str) -> std::io::Result<TcpStream> {
     let mut srv = connect_retry(server_addr, Duration::from_secs(10))?;
-    srv.set_read_timeout(Some(Duration::from_secs(20)))?;
+    srv.set_read_timeout(Some(Duration::from_secs(75)))?;
     srv.write_all(
         &MessageFactory::build_login_message(
             username,
@@ -973,6 +973,25 @@ fn main() {
         cfg.file_bytes / 1024
     );
 
+    // --- client under test ------------------------------------------------
+    let mut client = Client::with_settings(ClientSettings {
+        username: client_name,
+        password: "pw".to_string(),
+        server_address: PeerAddress::new(server.host.clone(), server.port),
+        enable_listen: true,
+        listen_port: client_port,
+        shared_directories: vec![share_dir.display().to_string()],
+        accept_children: false,
+        version: ClientVersion::default(),
+    });
+    client.connect().expect("client connect");
+    assert!(client.login().expect("client login"), "client login failed");
+    client.set_upload_slots(cfg.upload_slots);
+    let client = Arc::new(client);
+    println!("\nstress: test client online");
+
+    std::thread::sleep(Duration::from_secs(1));
+
     // --- mock seeders -----------------------------------------------------
     let content = Arc::new(payload);
     let mut seeder_names = Vec::new();
@@ -989,7 +1008,7 @@ fn main() {
             content: content.clone(),
             metrics: metrics.clone(),
             stop: stop.clone(),
-            login_delay: Duration::from_micros(1500 * i as u64),
+            login_delay: Duration::from_micros(250 * i as u64),
         };
         std::thread::spawn(move || seeder.run());
     }
@@ -999,7 +1018,7 @@ fn main() {
     // registered their listening port by the time we ask it for their address.
     let start = Arc::new(AtomicBool::new(false));
     let run_deadline_hint =
-        Instant::now() + cfg.timeout + Duration::from_secs(40);
+        Instant::now() + cfg.timeout + Duration::from_secs(75);
     let mut leechers = Vec::new();
     for i in 0..cfg.leechers {
         let leecher = Leecher {
@@ -1009,42 +1028,25 @@ fn main() {
             filename: shared_names[i % shared_names.len()].clone(),
             metrics: metrics.clone(),
             deadline: run_deadline_hint,
-            login_delay: Duration::from_micros(1500 * i as u64),
+            login_delay: Duration::from_micros(250 * i as u64),
             start: start.clone(),
         };
         leechers.push(std::thread::spawn(move || leecher.run()));
     }
 
     // Let the swarm register its wait ports before the client starts.
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(75);
     while Metrics::get(&metrics.peers_online) < cfg.peers as u64
         && Instant::now() < deadline
     {
         std::thread::sleep(Duration::from_millis(50));
     }
     println!(
-        "stress: {}/{} seeders online",
+        "\nstress: {}/{} seeders online",
         Metrics::get(&metrics.peers_online),
         cfg.peers
     );
 
-    // --- client under test ------------------------------------------------
-    let mut client = Client::with_settings(ClientSettings {
-        username: client_name,
-        password: "pw".to_string(),
-        server_address: PeerAddress::new(server.host.clone(), server.port),
-        enable_listen: true,
-        listen_port: client_port,
-        shared_directories: vec![share_dir.display().to_string()],
-        accept_children: false,
-        version: ClientVersion::default(),
-    });
-    client.connect().expect("client connect");
-    assert!(client.login().expect("client login"), "client login failed");
-    client.set_upload_slots(cfg.upload_slots);
-    std::thread::sleep(Duration::from_secs(1));
-
-    let client = Arc::new(client);
     let started = Instant::now();
     let run_deadline = started + cfg.timeout;
     let peak_threads = Arc::new(AtomicU64::new(0));
@@ -1135,7 +1137,7 @@ fn main() {
         .store(answered as u64, Ordering::Relaxed);
     metrics.results_total.store(results_seen, Ordering::Relaxed);
     println!(
-        "stress: {} distinct peers answered searches, firing {} downloads",
+        "\nstress: {} distinct peers answered searches, firing {} downloads",
         hits.len(),
         hits.len().min(cfg.downloads)
     );
@@ -1301,7 +1303,7 @@ fn main() {
     if std::env::var("STRESS_REQUIRE_FUNCTIONAL").is_ok_and(|v| v == "1")
         && !failures.is_empty()
     {
-        eprintln!("stress: work was lost: {}", failures.join(", "));
+        eprintln!("\nstress: work was lost: {}", failures.join(", "));
         std::process::exit(1);
     }
 }

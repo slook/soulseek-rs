@@ -64,9 +64,9 @@ mod types;
 pub use types::{Context, PeerAddress, UserMessage};
 
 /// Ceiling on the wait for the server's login verdict. A loaded server can
-/// take seconds to answer, so this stays inside the caller's own 45s bound
+/// take seconds to answer, so this stays inside the caller's own 75s bound
 /// rather than undercutting it.
-const LOGIN_VERDICT_TIMEOUT: Duration = Duration::from_secs(30);
+const LOGIN_VERDICT_TIMEOUT: Duration = Duration::from_secs(60);
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 

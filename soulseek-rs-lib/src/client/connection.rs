@@ -9,12 +9,12 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
 const LISTENER_RELEASE_TIMEOUT: Duration = Duration::from_secs(2);
-const LOGIN_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const LOGIN_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Ceiling on the wait for a login verdict. Generous enough for a slow server
 /// and a retrying connect, short enough that an unattended caller ends.
 const LOGIN_RESPONSE_TIMEOUT: std::time::Duration =
-    std::time::Duration::from_secs(45);
+    std::time::Duration::from_secs(75);
 
 /// Soft open-file limit below which a session should expect "too many open
 /// files": every peer holds a socket, and one busy search talks to hundreds
