@@ -4,10 +4,10 @@ name: CI
 # every branch ran the whole matrix twice per PR.
 on:
   push:
-    branches: [master]
     paths-ignore: ['website/**']
   pull_request:
     branches: ['**']
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
